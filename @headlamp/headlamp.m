@@ -17,7 +17,16 @@ classdef headlamp < handle
         orientation = [0 0 0];
         name;
 
-        resolution = [320 640]; % assume wider than tall
+        % x_resolution = 640;
+        % y_resolution = 320;
+        % resolution = [y_res, x_res]
+
+        scaleFactor = 50;
+        % newXres = scaleFactor * 8;
+        % newYres = scaleFactor * 3;
+
+        % was originally 3 x 8
+        resolution = [150 400]; % assume wider than tall
 
         peakIntensity = 61500; % candelas at a nominal bright point
 
@@ -92,8 +101,20 @@ classdef headlamp < handle
 
                     % Modify power based on distance
                     % as we need less power for closer objects
-                    attenuation = obj.modelAttenuation(0);
-                    obj.lightMask = obj.maskImage(0, '') .* attenuation;
+
+                    % our janky mask
+                    load('../../project/NightTimeDriving/led-irradiances-grey.mat', 'EMatrixGrey')
+                    janky_attenuation = EMatrixGrey ./ max(EMatrixGrey, [], 'all');
+
+                    % upscaling our original irradiance profile
+                    xs = linspace(1, 8, obj.scaleFactor*8);
+                    ys = linspace(1, 3, obj.scaleFactor*3);
+                    [Xq, Yq] = meshgrid(xs, ys);
+                    upscaled_attenuation = interp2(janky_attenuation, Xq, Yq);
+
+                    % attenuation = obj.modelAttenuation(0);
+                    % obj.lightMask = obj.maskImage(0, '') .* attenuation;
+                    obj.lightMask = obj.maskImage(0, '') .* upscaled_attenuation;
 
                     obj.lightMaskFileName = 'headlamp_levelbeam.exr';
                     obj.power = 5;
@@ -220,38 +241,41 @@ classdef headlamp < handle
             end
 
             % Baseline mask: begin with all 1's
-            maskImage = ones (obj.resolution(1), obj.resolution(2), 3);
+            maskImage = ones(obj.resolution(1), obj.resolution(2), 3);
 
-            % we need to deal with degreesHorizontal for "sidewalk"
-            % lighting. The combination of the two is essentially an "OR"
-            % as we want light provided either below degreesVertical
-            % or to the (right) of degreesHorizontal
-            % Now calculate our horizontal cutoff -- degreesVertical
-            darkCols = round((obj.resolution(2) / 2) - pixelOffsetHorizontal);
-            litCols = obj.resolution(2) - darkCols;
+            % experimenting with weird mask
+            % maskImage(1:end/2,:,:) = maskImage(1:end/2,:,:) .* 0.1;
 
-            gradientMaskLeft = zeros(darkCols, obj.resolution(1));
-            gradientMaskRight = ones(litCols, obj.resolution(1));
-
-            % Now calculate our horizontal cutoff -- degreesVertical
-            darkRows = round((obj.resolution(1) / 2) - pixelOffset);
-            litRows = obj.resolution(1) - darkRows;
-
-            gradientMaskTop = zeros(darkRows, obj.resolution(2));
-            gradientMaskBottom = ones(litRows, obj.resolution(2));
-
-            gradientMaskBottom = gradientMaskBottom .* .8; % super simple
-
-            gradientMaskVertical = [gradientMaskTop; gradientMaskBottom];
-            gradientMaskHorizontal = [gradientMaskLeft; gradientMaskRight];
-
-            if ~isempty(degreesHorizontal)
-                gradientMask = max(gradientMaskVertical, gradientMaskHorizontal);
-            else
-                gradientMask = [gradientMaskTop; gradientMaskBottom];
-            end
-
-            maskImage = maskImage .* gradientMask;
+            % % we need to deal with degreesHorizontal for "sidewalk"
+            % % lighting. The combination of the two is essentially an "OR"
+            % % as we want light provided either below degreesVertical
+            % % or to the (right) of degreesHorizontal
+            % % Now calculate our horizontal cutoff -- degreesVertical
+            % darkCols = round((obj.resolution(2) / 2) - pixelOffsetHorizontal);
+            % litCols = obj.resolution(2) - darkCols;
+            % 
+            % gradientMaskLeft = zeros(darkCols, obj.resolution(1));
+            % gradientMaskRight = ones(litCols, obj.resolution(1));
+            % 
+            % % Now calculate our horizontal cutoff -- degreesVertical
+            % darkRows = round((obj.resolution(1) / 2) - pixelOffset);
+            % litRows = obj.resolution(1) - darkRows;
+            % 
+            % gradientMaskTop = zeros(darkRows, obj.resolution(2));
+            % gradientMaskBottom = ones(litRows, obj.resolution(2));
+            % 
+            % gradientMaskBottom = gradientMaskBottom .* 0.8; % super simple
+            % 
+            % gradientMaskVertical = [gradientMaskTop; gradientMaskBottom];
+            % gradientMaskHorizontal = [gradientMaskLeft; gradientMaskRight];
+            % 
+            % if ~isempty(degreesHorizontal)
+            %     gradientMask = max(gradientMaskVertical, gradientMaskHorizontal);
+            % else
+            %     gradientMask = [gradientMaskTop; gradientMaskBottom];
+            % end
+            % 
+            % maskImage = maskImage .* gradientMask;
 
         end
 
