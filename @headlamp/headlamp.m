@@ -22,12 +22,14 @@ classdef headlamp < handle
         % resolution = [y_res, x_res]
 
         scaleFactor = 50;
-        % newXres = scaleFactor * 8;
-        % newYres = scaleFactor * 3;
 
-        % was originally 3 x 8
-        resolution = [150 400]; % assume wider than tall
+        % our profile data is 3 x 8, blowing up by scaleFactor=50 to 150 x 400 for finer res
+        resolution = [150 400]; % wider than tall for headlight profiles.
 
+        % added brightnessScaleFactor to change max intensity.
+        brightnessScaleFactor = 1.0; % no scaling by default
+
+        % Note that this value is not actually used anywhere.
         peakIntensity = 61500; % candelas at a nominal bright point
 
         % Having trouble seeing where light projects
@@ -91,33 +93,69 @@ classdef headlamp < handle
             if ~isempty(p.Results.location)
                 obj.location = p.Results.location;
             end
+
+            % At this point, we load the variables from our data
+      
+            load("measured-luminance-matrices.mat", ...
+                        "ledLumMatrixGrey", ...
+                        "ledLumMatrixWhite",...
+                        "halogenLumMatrixGrey",...
+                        "halogenLumMatrixWhite");
+
             % now we want to generate the light & mask
             switch p.Results.preset
                 case 'low beam'
                     obj.lightMask = obj.maskImage(-.5, '');
                     obj.lightMaskFileName = 'headlamp_lowbeam.exr';
                     obj.power = 5;
-                case 'level beam'
+                
+                % CHEAP LED BEAM PROFILE
+                case 'cheap-led-beam'
 
-                    % Modify power based on distance
-                    % as we need less power for closer objects
-
-                    % our janky mask
-                    load('../../project/NightTimeDriving/led-irradiances-grey.mat', 'EMatrixGrey')
-                    janky_attenuation = EMatrixGrey ./ max(EMatrixGrey, [], 'all');
+                    % normalize 
+                    attenuation = ledLumMatrixGrey ./ max(ledLumMatrixGrey, [], 'all');
 
                     % upscaling our original irradiance profile
                     xs = linspace(1, 8, obj.scaleFactor*8);
                     ys = linspace(1, 3, obj.scaleFactor*3);
                     [Xq, Yq] = meshgrid(xs, ys);
-                    upscaled_attenuation = interp2(janky_attenuation, Xq, Yq);
+                    upscaled_attenuation = interp2(attenuation, Xq, Yq);
 
-                    % attenuation = obj.modelAttenuation(0);
-                    % obj.lightMask = obj.maskImage(0, '') .* attenuation;
+                    % brightnessScaleFactor = 0.2995 * 0.1713;
+                    % brightnessScaleFactor = 0.0581;
+
+                    ledBrightnessScaleFactor = 0.0592;
+                    obj.brightnessScaleFactor = ledBrightnessScaleFactor;
+
                     obj.lightMask = obj.maskImage(0, '') .* upscaled_attenuation;
 
-                    obj.lightMaskFileName = 'headlamp_levelbeam.exr';
+                    obj.lightMaskFileName = 'headlamp_cheap_led_beam.exr';
+
+                    % keep power the same. only change "scale"
                     obj.power = 5;
+                
+                case 'cheap-halogen-beam'
+
+                    % normalize 
+                    attenuation = halogenLumMatrixGrey ./ max(halogenLumMatrixGrey, [], 'all');
+
+                    % upscaling our original irradiance profile
+                    xs = linspace(1, 8, obj.scaleFactor*8);
+                    ys = linspace(1, 3, obj.scaleFactor*3);
+                    [Xq, Yq] = meshgrid(xs, ys);
+                    upscaled_attenuation = interp2(attenuation, Xq, Yq);
+
+                    halogenBrightnessScaleFactor = 0.0306;
+                    obj.brightnessScaleFactor = halogenBrightnessScaleFactor;
+               
+
+                    obj.lightMask = obj.maskImage(0, '') .* upscaled_attenuation;
+
+                    obj.lightMaskFileName = 'headlamp_cheap_led_beam.exr';
+
+                    % keep power the same. only change "scale"
+                    obj.power = 5;
+
                 case 'high beam'
                     obj.lightMask = obj.maskImage(10, '');
                     obj.lightMaskFileName = 'headlamp_highbeam.exr';
@@ -191,7 +229,7 @@ classdef headlamp < handle
                 % on a (ground level) asphalt road
                 isetLight = piLightCreate(obj.name, ...
                     'type','projection',...
-                    'scale',1,... % scales intensity
+                    'scale',obj.brightnessScaleFactor, ... % scales intensity USE OUR SCALING
                     'fov',40, ...
                     'power', obj.power, ...
                     'cameracoordinate', 1, ...
